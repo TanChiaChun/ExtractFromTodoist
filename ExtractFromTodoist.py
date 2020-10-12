@@ -8,6 +8,7 @@ import configparser
 #import ctypes
 import requests
 import csv
+import win32com.client as win32
 
 # Import classes
 import MyClasses
@@ -37,13 +38,16 @@ if not os.path.isfile("config.ini"):
 my_logger.info("Reading config file")
 my_config.read("config.ini")
 try:
-    #switch1 = my_general_class.parse_boolean_string(my_config["Heading1"]["switch1"] )
-    #var1 = my_config["Heading1"]["var1"]
+    outlook_email_switch = my_general_class.parse_boolean_string(my_config["Outlook"]["email_enable"] )
+    email_personal_work = my_config["Outlook"]["email_personal_work"]
     my_config_class.configure_logger()
 except KeyError:
     my_main_exception.handle_exception("Config file error!")
 
 # Get environment variables
+email_to = os.getenv("Email_Personal")
+if email_personal_work == "Work":
+    email_to = os.getenv("Email_Work")
 todoist_token = os.getenv("Todoist_Token")
 if todoist_token == None:
     my_main_exception.handle_exception("Missing environment variables!")
@@ -51,8 +55,8 @@ if todoist_token == None:
 # Declare variables
 projects_url = "https://api.todoist.com/rest/v1/projects"
 tasks_url = "https://api.todoist.com/rest/v1/tasks"
-dest_csv = r"data\Tasks_Full.csv"
-tasks_list = [ ["Project", "Section", "Task", "StartDate", "DueDate", "Priority", "Parent"] ]
+dest_csv = r"data\Projects.csv"
+tasks_list = [ ["Project", "Section", "Task", "StartDate", "DueDate", "Priority", "ID", "ParentID", "DESC"] ]
 section_dict = {}
 priority_dict = {
     1: "Low",
@@ -75,11 +79,6 @@ def get_task_due(pDue):
     if pDue != None:
         return pDue.get("date")
     return ""
-
-def parse_task_parent(pParent):
-    if pParent != None:
-        return "No"
-    return "Yes"
 
 ##################################################
 # Main
@@ -105,7 +104,7 @@ for project in projects:
         if section_id != 0 and section_dict.get(section_id) == None:
             section_dict[section_id] = requests.get("https://api.todoist.com/rest/v1/sections/" + str(section_id), headers={"Authorization": "Bearer %s" % todoist_token}).json()["name"]
         task_split = parse_task_content(task["content"] )
-        tasks_list.append( [ project["name"], section_dict.get(section_id), task_split[0], get_task_due( task.get("due") ), task_split[1], priority_dict[ task["priority"] ], parse_task_parent( task.get("parent_id") ) ] )
+        tasks_list.append( [ project["name"], section_dict.get(section_id), task_split[0], get_task_due( task.get("due") ), task_split[1], priority_dict[ task["priority"] ], task["id"], task.get("parent_id"), "" ] )
         tasks_counter += 1
 my_logger.info("Obtained %d tasks", tasks_counter)
 
@@ -116,7 +115,25 @@ with open(dest_csv, 'w', newline='') as csv_file:
     csv_writer.writerows(tasks_list)
 my_logger.info("Complete writing to %s\%s", CURRENT_DIRECTORY, dest_csv)
 
-# if switch1:
-#     pass
+if outlook_email_switch:
+    # Initialise Outlook application
+    try:
+        outlook_app = win32.Dispatch("Outlook.Application")
+        outlook_namespace = outlook_app.GetNameSpace("MAPI")
+    except:
+        my_main_exception.handle_exception("Outlook application error!")
+    
+    try:
+        # Send email with attachment
+        my_logger.info("Drafting email")
+        outlook_mail = outlook_app.CreateItem(0)
+        outlook_mail.To = email_to
+        outlook_mail.Subject = "Projects"
+        my_logger.info("Attaching csv")
+        outlook_mail.Attachments.Add(CURRENT_DIRECTORY + "\\" + dest_csv)
+        outlook_mail.Send()
+        my_logger.info("Email sent to %s", email_to)
+    except:
+        my_main_exception.handle_exception("Error sending email!")
 
 #my_general_class.finalise_app(is_app_end=True)

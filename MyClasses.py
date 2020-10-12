@@ -51,9 +51,9 @@ class MyConfig:
         self.my_config = configparser.ConfigParser()
     
     def create_file_specific(self):
-        self.my_config["Heading1"] = {}
-        self.my_config["Heading1"]["switch1"] = "False"
-        self.my_config["Heading1"]["var1"] = "String"
+        self.my_config["Outlook"] = {}
+        self.my_config["Outlook"]["email_enable"] = "False"
+        self.my_config["Outlook"]["email_personal_work"] = "Personal"
 
     def create_file(self):
         self.my_config["App"] = {}
