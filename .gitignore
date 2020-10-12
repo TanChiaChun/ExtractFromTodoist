@@ -1,0 +1,8 @@
+.vscode/
+__pycache__/
+venv/
+pyinstaller/
+data/
+app_data/
+*.ini
+requirements_*.txt
