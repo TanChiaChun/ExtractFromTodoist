@@ -56,7 +56,10 @@ if todoist_token == None:
 projects_url = "https://api.todoist.com/rest/v1/projects"
 tasks_url = "https://api.todoist.com/rest/v1/tasks"
 dest_csv = r"data\Projects.csv"
-tasks_list = [ ["Project", "Section", "Task", "DoDate", "DueDate", "StartDate", "Priority", "Description", "ID", "ParentID"] ]
+tasks_list = [ ["Project", "Section", "Task", "DoDate", "DueDate", "StartDate", "Priority", "Description", "SubTasks", "ID", "Parent"] ]
+temp_list_start = []
+temp_list_description = []
+temp_list_append = []
 key_startdate = "[S]"
 key_description = "[D]"
 section_dict = {}
@@ -70,6 +73,25 @@ priority_dict = {
 ##################################################
 # Functions
 ##################################################
+def get_2d_index(pList, pValue):
+    for i, row in enumerate(pList):
+        try:
+            return i, row.index(pValue)
+        except ValueError:
+            pass
+    raise Exception
+
+def parse_subtask(pList, pValue, pIndex, pTask):
+    i = get_2d_index(pList, pValue)[0]
+    pList[i][pIndex] = str.split(pTask, ']')[1]
+
+def append_subtask(pList, pValue, pTask):
+    i = get_2d_index(pList, pValue)[0]
+    if pList[i][8] == '':
+        pList[i][8] = pTask
+    elif pList[i][8] != '':
+        pList[i][8] += "|" + pTask
+
 def parse_task_content(pContent):
     str_split = str.split(pContent, '|')
     due = ""
@@ -82,12 +104,10 @@ def get_task_due(pDue):
         return pDue.get("date")
     return ""
 
-def get_2d_index(pList, pValue):
-    for i, row in enumerate(pList):
-        try:
-            return i, row.index(pValue)
-        except ValueError:
-            pass
+def parse_task_parent(pParent):
+    if pParent == None:
+        return "Yes"
+    return "No"
 
 ##################################################
 # Main
@@ -109,21 +129,43 @@ for project in projects:
     tasks = requests.get(tasks_url, params={"project_id": project["id"]}, headers={"Authorization": "Bearer %s" % todoist_token}).json()
     for task in tasks:
         my_logger.debug("--Reading task [%s]", task["content"])
+
         if task["content"].startswith(key_startdate):
-            i = get_2d_index(tasks_list, task["parent_id"] )[0]
-            tasks_list[i][5] = str.split(task["content"], ']')[1]
+            try:
+                parse_subtask(tasks_list, task["parent_id"], 5, task["content"] )
+            except:
+                temp_list_start.append(task)
             continue
+
         if task["content"].startswith(key_description):
-            i = get_2d_index(tasks_list, task["parent_id"] )[0]
-            tasks_list[i][7] = str.split(task["content"], ']')[1]
+            try:
+                parse_subtask(tasks_list, task["parent_id"], 7, task["content"] )
+            except:
+                temp_list_description.append(task)
             continue
+
+        if task.get("parent_id") != None:
+            try:
+                append_subtask(tasks_list, task["parent_id"], task["content"])
+            except:
+                temp_list_append.append(task)
+
         section_id = task["section_id"]
         if section_id != 0 and section_dict.get(section_id) == None:
             section_dict[section_id] = requests.get("https://api.todoist.com/rest/v1/sections/" + str(section_id), headers={"Authorization": "Bearer %s" % todoist_token}).json()["name"]
         task_split = parse_task_content(task["content"] )
-        tasks_list.append( [ project["name"], section_dict.get(section_id), task_split[0], get_task_due( task.get("due") ), task_split[1], "", priority_dict[ task["priority"] ], "", task["id"], task.get("parent_id") ] )
+        tasks_list.append( [ project["name"], section_dict.get(section_id), task_split[0], get_task_due( task.get("due") ), task_split[1], "", priority_dict[ task["priority"] ], "", "", task["id"], parse_task_parent( task.get("parent_id") ) ] )
         tasks_counter += 1
 my_logger.info("Obtained %d tasks", tasks_counter)
+
+for row in temp_list_start:
+    parse_subtask(tasks_list, row["parent_id"], 5, row["content"] )
+
+for row in temp_list_description:
+    parse_subtask(tasks_list, row["parent_id"], 7, row["content"] )
+
+for row in temp_list_append:
+    append_subtask(tasks_list, row["parent_id"], row["content"])
 
 # Write to csv
 my_logger.info("Writing to csv")
