@@ -56,13 +56,15 @@ if todoist_token == None:
 projects_url = "https://api.todoist.com/rest/v1/projects"
 tasks_url = "https://api.todoist.com/rest/v1/tasks"
 dest_csv = r"data\Projects.csv"
-tasks_list = [ ["Project", "Section", "Task", "StartDate", "DueDate", "Priority", "ID", "ParentID", "DESC"] ]
+tasks_list = [ ["Project", "Section", "Task", "DoDate", "DueDate", "StartDate", "Priority", "Description", "ID", "ParentID"] ]
+key_startdate = "[S]"
+key_description = "[D]"
 section_dict = {}
 priority_dict = {
-    1: "Low",
-    2: "Medium",
-    3: "High",
-    4: "Critical"
+    1: "4-Low",
+    2: "3-Medium",
+    3: "2-High",
+    4: "1-Critical"
 }
 
 ##################################################
@@ -79,6 +81,13 @@ def get_task_due(pDue):
     if pDue != None:
         return pDue.get("date")
     return ""
+
+def get_2d_index(pList, pValue):
+    for i, row in enumerate(pList):
+        try:
+            return i, row.index(pValue)
+        except ValueError:
+            pass
 
 ##################################################
 # Main
@@ -100,11 +109,19 @@ for project in projects:
     tasks = requests.get(tasks_url, params={"project_id": project["id"]}, headers={"Authorization": "Bearer %s" % todoist_token}).json()
     for task in tasks:
         my_logger.debug("--Reading task [%s]", task["content"])
+        if task["content"].startswith(key_startdate):
+            i = get_2d_index(tasks_list, task["parent_id"] )[0]
+            tasks_list[i][5] = str.split(task["content"], ']')[1]
+            continue
+        if task["content"].startswith(key_description):
+            i = get_2d_index(tasks_list, task["parent_id"] )[0]
+            tasks_list[i][7] = str.split(task["content"], ']')[1]
+            continue
         section_id = task["section_id"]
         if section_id != 0 and section_dict.get(section_id) == None:
             section_dict[section_id] = requests.get("https://api.todoist.com/rest/v1/sections/" + str(section_id), headers={"Authorization": "Bearer %s" % todoist_token}).json()["name"]
         task_split = parse_task_content(task["content"] )
-        tasks_list.append( [ project["name"], section_dict.get(section_id), task_split[0], get_task_due( task.get("due") ), task_split[1], priority_dict[ task["priority"] ], task["id"], task.get("parent_id"), "" ] )
+        tasks_list.append( [ project["name"], section_dict.get(section_id), task_split[0], get_task_due( task.get("due") ), task_split[1], "", priority_dict[ task["priority"] ], "", task["id"], task.get("parent_id") ] )
         tasks_counter += 1
 my_logger.info("Obtained %d tasks", tasks_counter)
 
